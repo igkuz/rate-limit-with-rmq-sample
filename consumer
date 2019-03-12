@@ -1,0 +1,47 @@
+#!/usr/bin/env ruby
+# encoding utf-8
+
+require 'bunny'
+require 'logger'
+require 'redis'
+
+logger = Logger.new(STDOUT)
+STDOUT.sync = true
+
+conn = Bunny.new(host: 'rmq', user: 'guest', pass: 'guest')
+conn.start
+
+ch = conn.create_channel
+q = ch.queue('work.queue', arguments: { :'x-dead-letter-exchange' => 'retry.exchange' })
+
+Redis.current = Redis.new(host: 'redis')
+
+# `block: true` is only for presentation purposes
+# it blocks the main thread, do not use it in production
+q.subscribe(manual_ack: true, block: true) do |delivery_info, properties, payload|
+  logger.info "Message received with payload: #{payload}"
+  key = "slot:#{Time.now.utc.sec}"
+  slot = Redis.current.get(key)
+  logger.info "Slot value: #{slot}"
+  if !slot || slot.to_i < 1
+    logger.info "Slot acquired, writing to Redis"
+    result = Redis.current.multi do |multi|
+      multi.set(key, 1)
+      multi.expire(key, 1)
+    end
+    logger.info "Slot acquired, finished writing to Redis with result: #{result}"
+
+    # ---------
+    # make a request here
+    # ---------
+
+    ch.ack(delivery_info.delivery_tag)
+    logger.info "Message acked"
+  else
+    # reject without requeue
+    ch.reject(delivery_info.delivery_tag)
+    logger.info "Message rejected"
+  end
+end
+
+conn.close

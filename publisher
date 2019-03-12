@@ -1,0 +1,23 @@
+#!/usr/bin/env ruby
+# encoding utf-8
+
+require 'bunny'
+require 'json'
+STDOUT.sync = true
+
+conn = Bunny.new(host: 'rmq', user: 'guest', pass: 'guest')
+conn.start
+
+ch = conn.create_channel
+x = ch.exchange('work.exchange')
+
+(1..10).each do |i|
+  x.publish(
+      {id: i, text: "I'm message #{i}"}.to_json,
+      routing_key: 'work.queue',
+      headers: {
+        content_type: 'application/json'
+      }
+    )
+end
+conn.close

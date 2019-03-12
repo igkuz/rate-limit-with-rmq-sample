@@ -1,0 +1,27 @@
+version: '3'
+
+services:
+
+  rmq:
+    image: rabbitmq:3.7-management
+    ports:
+      - '8080:15672'
+      - '5672:5672'
+
+  redis:
+    image: redis:2.8
+    ports:
+      - '6379:6379'
+    volumes:
+      - redis:/var/lib/redis/data
+
+  app:
+    build: .
+    volumes:
+      - .:/rate-limit-with-rmq
+    depends_on:
+      - rmq
+      - redis
+
+volumes:
+  redis:
